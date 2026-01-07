@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>GoTogether - Вхід</title>
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.3.3/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+
+<div class="container mx-auto py-10">
+    <h1 class="text-3xl font-bold mb-6 text-center text-blue-600">Вхід</h1>
+
+    <form id="login-form" class="bg-white p-6 rounded shadow-md max-w-md mx-auto space-y-4">
+        <input type="text" id="username" placeholder="Логін" class="border p-2 rounded w-full" required>
+        <input type="password" id="password" placeholder="Пароль" class="border p-2 rounded w-full" required>
+        <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 w-full">Увійти</button>
+    </form>
+
+    <p class="text-center mt-4">Ще не маєте акаунту?
+        <a href="/register/" class="text-blue-600 font-semibold">Зареєструватися</a>
+    </p>
+</div>
+
+<script>
+document.getElementById('login-form').addEventListener('submit', async function(e){
+    e.preventDefault();
+
+    const data = {
+        username: document.getElementById('username').value,
+        password: document.getElementById('password').value
+    };
+
+    const response = await fetch('/api/token/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
+
+    if(response.ok){
+        const tokens = await response.json();
+        localStorage.setItem('access_token', tokens.access);
+        localStorage.setItem('refresh_token', tokens.refresh);
+        alert('Вхід успішний!');
+        window.location.href = '/';
+    } else {
+        const error = await response.json();
+        alert('Помилка входу: ' + JSON.stringify(error));
+    }
+});
+</script>
+
+</body>
+</html>

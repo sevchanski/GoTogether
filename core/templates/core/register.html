@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Реєстрація</title>
+</head>
+<body>
+
+<h2>Реєстрація</h2>
+
+<form id="register-form">
+    <input type="text" id="username" placeholder="Логін" required><br>
+    <input type="email" id="email" placeholder="Email" required><br>
+    <input type="password" id="password" placeholder="Пароль" required><br>
+    <input type="password" id="password2" placeholder="Повторіть пароль" required><br>
+    <button type="submit">Зареєструватись</button>
+</form>
+
+<p id="message" style="color: red;"></p>
+
+<script>
+document.getElementById('register-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const messageEl = document.getElementById('message');
+    messageEl.innerText = '';
+
+    const response = await fetch('/api/register/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            username: document.getElementById('username').value,
+            email: document.getElementById('email').value,
+            password: document.getElementById('password').value,
+            password2: document.getElementById('password2').value
+        })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+        messageEl.style.color = 'green';
+        messageEl.innerText = 'Реєстрація успішна! Перенаправлення...';
+
+        // ⏳ невелика пауза і редірект
+        setTimeout(() => {
+            window.location.href = '/';
+        }, 1500);
+    } else {
+        // 📧 email вже існує або інша помилка
+        if (data.email) {
+            messageEl.innerText = data.email[0];
+        } else if (data.password) {
+            messageEl.innerText = data.password[0];
+        } else if (data.non_field_errors) {
+            messageEl.innerText = data.non_field_errors[0];
+        } else {
+            messageEl.innerText = 'Помилка реєстрації';
+        }
+    }
+});
+</script>
+
+</body>
+</html>
