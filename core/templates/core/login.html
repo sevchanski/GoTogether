@@ -11,7 +11,7 @@
     <h1 class="text-3xl font-bold mb-6 text-center text-blue-600">Вхід</h1>
 
     <form id="login-form" class="bg-white p-6 rounded shadow-md max-w-md mx-auto space-y-4">
-        <input type="text" id="username" placeholder="Логін" class="border p-2 rounded w-full" required>
+        <input type="email" id="email" placeholder="Логін" class="border p-2 rounded w-full" required>
         <input type="password" id="password" placeholder="Пароль" class="border p-2 rounded w-full" required>
         <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 w-full">Увійти</button>
     </form>
@@ -26,7 +26,7 @@ document.getElementById('login-form').addEventListener('submit', async function(
     e.preventDefault();
 
     const data = {
-        username: document.getElementById('username').value,
+        email: document.getElementById('email').value,
         password: document.getElementById('password').value
     };
 

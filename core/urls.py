@@ -1,5 +1,5 @@
 from rest_framework import routers
-from .views import TripViewSet, BookingViewSet, MessageViewSet, ReviewViewSet, home, cities, register
+from .views import TripViewSet, BookingViewSet, MessageViewSet, ReviewViewSet, home, cities, register, EmailLoginView
 from .views import register_view, login_view, logout_view
 from django.urls import path, include
 
@@ -17,4 +17,5 @@ urlpatterns = [
     path('login/', login_view, name='login'),       # сторінка логіну
     path('register/', register_view, name='register'), # сторінка реєстрації
     path('logout/', logout_view, name='logout'),   # вихід
+    path('api/token/', EmailLoginView.as_view(), name='token_obtain_pair')
 ]

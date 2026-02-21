@@ -9,7 +9,8 @@
 <h2>Реєстрація</h2>
 
 <form id="register-form">
-    <input type="text" id="username" placeholder="Логін" required><br>
+    <input type="text" id="first_name" placeholder="Імʼя" required><br>
+    <input type="text" id="last_name" placeholder="Прізвище" required><br>
     <input type="email" id="email" placeholder="Email" required><br>
     <input type="password" id="password" placeholder="Пароль" required><br>
     <input type="password" id="password2" placeholder="Повторіть пароль" required><br>
@@ -31,8 +32,10 @@ document.getElementById('register-form').addEventListener('submit', async functi
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            username: document.getElementById('username').value,
             email: document.getElementById('email').value,
+            username: document.getElementById('email').value, // email = username
+            first_name: document.getElementById('first_name').value,
+            last_name: document.getElementById('last_name').value,
             password: document.getElementById('password').value,
             password2: document.getElementById('password2').value
         })
@@ -42,14 +45,12 @@ document.getElementById('register-form').addEventListener('submit', async functi
 
     if (response.ok) {
         messageEl.style.color = 'green';
-        messageEl.innerText = 'Реєстрація успішна! Перенаправлення...';
+        messageEl.innerText = 'Реєстрація успішна!';
 
-        // ⏳ невелика пауза і редірект
         setTimeout(() => {
             window.location.href = '/';
         }, 1500);
     } else {
-        // 📧 email вже існує або інша помилка
         if (data.email) {
             messageEl.innerText = data.email[0];
         } else if (data.password) {

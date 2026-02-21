@@ -23,6 +23,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from .models import User
 from .serializers import RegisterSerializer
+from rest_framework_simplejwt.views import TokenObtainPairView
+from .serializers import EmailTokenObtainPairSerializer
 
 # ----------------------------------------
 # 1. Головна сторінка
@@ -99,7 +101,8 @@ class ReviewViewSet(viewsets.ModelViewSet):
         # Встановлюємо автора відгуку як поточного користувача
         serializer.save(reviewer=self.request.user)
 
-
+class EmailLoginView(TokenObtainPairView):
+    serializer_class = EmailTokenObtainPairSerializer
 # ----------------------------------------
 # 3. Ендпойнт для автокомпліту міст
 # ----------------------------------------

@@ -1,34 +1,58 @@
 from django.db import models
-from django.contrib.auth.models import AbstractUser, Group, Permission
+from django.contrib.auth.models import AbstractBaseUser, Group, PermissionsMixin,BaseUserManager
 from django.utils import timezone
 
 
 # ----------------------------------------
 # 1. Користувач / профіль
 # ----------------------------------------
-class User(AbstractUser):
+class UserManager(BaseUserManager):
+    def create_user(self, email, password=None, first_name='', last_name='', **extra_fields):
+        if not email:
+            raise ValueError("Email обов'язковий")
+
+        email = self.normalize_email(email)
+
+        user = self.model(
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            **extra_fields
+        )
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, email, password, first_name='', last_name='', **extra_fields):
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+
+        return self.create_user(email, password, first_name, last_name, **extra_fields)
+
+
+class User(AbstractBaseUser, PermissionsMixin):
+    email = models.EmailField(unique=True)
+
+    first_name = models.CharField(max_length=150)
+    last_name = models.CharField(max_length=150)
+
     phone_number = models.CharField(max_length=20, blank=True)
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     rating = models.DecimalField(max_digits=3, decimal_places=2, default=5.0)
 
-    groups = models.ManyToManyField(
-        Group,
-        related_name='custom_user_set',  # <- додано
-        blank=True,
-        help_text='The groups this user belongs to.',
-        verbose_name='groups'
-    )
-    user_permissions = models.ManyToManyField(
-        Permission,
-        related_name='custom_user_set',  # <- додано
-        blank=True,
-        help_text='Specific permissions for this user.',
-        verbose_name='user permissions'
-    )
+    date_joined = models.DateTimeField(default=timezone.now)  # ✅ ОБОВʼЯЗКОВО
+    last_login = models.DateTimeField(blank=True, null=True)  # (рекомендовано)
+
+    is_active = models.BooleanField(default=True)
+    is_staff = models.BooleanField(default=False)
+
+    objects = UserManager()
+
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['first_name', 'last_name']
 
     def __str__(self):
-        return self.username
-
+        return f"{self.first_name} {self.last_name}"
 
 # ----------------------------------------
 # 2. Поїздки
