@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -20,8 +21,10 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django_filters',
 
     # Third-party
+    'corsheaders',
     'rest_framework',
     'rest_framework.authtoken',
 
@@ -33,6 +36,7 @@ INSTALLED_APPS = [
 # MIDDLEWARE
 # ===============================
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',  # 🔥 ВАЖЛИВО — першим
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -41,6 +45,11 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+# ===============================
+# CORS (React)
+# ===============================
+CORS_ALLOW_ALL_ORIGINS = True  # для розробки
 
 # ===============================
 # URLS / WSGI
@@ -54,7 +63,7 @@ WSGI_APPLICATION = 'gotogether_project.wsgi.application'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'core' / 'templates'],
+        'DIRS': [],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -101,11 +110,16 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.AllowAny',
+        'rest_framework.permissions.IsAuthenticatedOrReadOnly',
+    ),
+    'DEFAULT_FILTER_BACKENDS': (
+        'django_filters.rest_framework.DjangoFilterBackend',
     ),
 }
 
 SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
     'AUTH_HEADER_TYPES': ('Bearer',),
@@ -120,7 +134,7 @@ USE_I18N = True
 USE_TZ = True
 
 # ===============================
-# STATIC FILES (CSS)
+# STATIC FILES
 # ===============================
 STATIC_URL = '/static/'
 

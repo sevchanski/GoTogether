@@ -1,21 +1,26 @@
 from rest_framework import routers
-from .views import TripViewSet, BookingViewSet, MessageViewSet, ReviewViewSet, home, cities, register, EmailLoginView
-from .views import register_view, login_view, logout_view
 from django.urls import path, include
+from .views import (
+    TripViewSet,
+    BookingViewSet,
+    MessageViewSet,
+    ReviewViewSet,
+    cities,
+    register,
+    EmailLoginView,
+    me
+)
 
 router = routers.DefaultRouter()
-router.register(r'trips', TripViewSet)
-router.register(r'bookings', BookingViewSet)
-router.register(r'messages', MessageViewSet)
-router.register(r'reviews', ReviewViewSet)
+router.register(r'trips', TripViewSet, basename='trips')
+router.register(r'bookings', BookingViewSet, basename='bookings')
+router.register(r'messages', MessageViewSet, basename='messages')
+router.register(r'reviews', ReviewViewSet, basename='reviews')
 
 urlpatterns = [
-    path('', home, name='home'),               # головна сторінка
-    path('api/', include(router.urls)),        # всі ViewSet API
-    path('api/cities/', cities, name='cities'), # <- Додано endpoint для автокомпліту міст
+    path('', include(router.urls)),
+    path('cities/', cities, name="cities"),
     path('api/register/', register, name='register'),
-    path('login/', login_view, name='login'),       # сторінка логіну
-    path('register/', register_view, name='register'), # сторінка реєстрації
-    path('logout/', logout_view, name='logout'),   # вихід
-    path('api/token/', EmailLoginView.as_view(), name='token_obtain_pair')
+    path('token/', EmailLoginView.as_view(), name="token_obtaim_pair"),
+    path('api/me/', me, name="me"),
 ]

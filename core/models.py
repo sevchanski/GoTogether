@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.utils import timezone
+from django.core.exceptions import ValidationError
+from django.db.models import Avg
 
 
 # ----------------------------------------
@@ -39,7 +41,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     rating = models.DecimalField(max_digits=3, decimal_places=2, default=5.0)
 
-    is_driver = models.BooleanField(default=False)  # ✅ НОВЕ
+    is_driver = models.BooleanField(default=False)
 
     date_joined = models.DateTimeField(default=timezone.now)
     last_login = models.DateTimeField(blank=True, null=True)
@@ -64,7 +66,7 @@ class Car(models.Model):
     driver = models.OneToOneField(User, on_delete=models.CASCADE, related_name='car')
     brand = models.CharField(max_length=100)
     model = models.CharField(max_length=100)
-    plate_number = models.CharField(max_length=20)
+    plate_number = models.CharField(max_length=20, unique=True)
     color = models.CharField(max_length=50)
 
     def __str__(self):
@@ -72,35 +74,34 @@ class Car(models.Model):
 
 
 # ----------------------------------------
-# TRIP (міський райдшерінг)
+# TRIP
 # ----------------------------------------
-
 class Trip(models.Model):
-    driver = models.ForeignKey(User, on_delete=models.CASCADE, related_name='driven_trips')
+    driver = models.ForeignKey(User, on_delete=models.CASCADE)
+
+    city = models.CharField(max_length=100)
 
     origin = models.CharField(max_length=255)
-    destination = models.CharField(max_length=255)
+    origin_lat = models.FloatField()
+    origin_lng = models.FloatField()
 
-    origin_lat = models.FloatField(null=True, blank=True)
-    origin_lng = models.FloatField(null=True, blank=True)
-    destination_lat = models.FloatField(null=True, blank=True)
-    destination_lng = models.FloatField(null=True, blank=True)
+    destination = models.CharField(max_length=255)
+    destination_lat = models.FloatField()
+    destination_lng = models.FloatField()
+
+    route_geometry = models.JSONField(null=True, blank=True)
+
+    distance_km = models.FloatField(null=True, blank=True)
+    duration_min = models.IntegerField(null=True, blank=True)
 
     departure_time = models.DateTimeField()
 
-    seats_total = models.PositiveIntegerField(default=1)
-    seats_available = models.PositiveIntegerField(default=1)
+    seats_total = models.IntegerField()
+    seats_available = models.IntegerField()
 
-    price_per_seat = models.DecimalField(max_digits=6, decimal_places=2)
+    price_per_seat = models.DecimalField(max_digits=8, decimal_places=2)
 
-    STATUS_CHOICES = (
-        ('active', 'Active'),
-        ('full', 'Full'),
-        ('completed', 'Completed'),
-        ('canceled', 'Canceled'),
-    )
-
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active')
+    status = models.CharField(max_length=20, default="active")
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -109,7 +110,7 @@ class Trip(models.Model):
 
 
 # ----------------------------------------
-# BOOKING (заявка пасажира)
+# BOOKING
 # ----------------------------------------
 
 class Booking(models.Model):
@@ -127,6 +128,14 @@ class Booking(models.Model):
 
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     booked_at = models.DateTimeField(auto_now_add=True)
+
+    def clean(self):
+        # ❌ Водій не може бронювати свою поїздку
+        if self.trip.driver == self.passenger:
+            raise ValidationError("Водій не може бронювати свою поїздку")
+
+        if self.seats_booked <= 0:
+            raise ValidationError("Кількість місць має бути більше 0")
 
     def __str__(self):
         return f"{self.passenger} -> {self.trip}"
@@ -156,6 +165,15 @@ class Review(models.Model):
     rating = models.PositiveSmallIntegerField(default=5)
     comment = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+
+        # 🔥 Автоматичне оновлення рейтингу водія
+        driver = self.trip.driver
+        avg_rating = Review.objects.filter(trip__driver=driver).aggregate(Avg('rating'))['rating__avg']
+        driver.rating = round(avg_rating, 2)
+        driver.save()
 
     def __str__(self):
         return f"{self.reviewer} ({self.rating}⭐)"

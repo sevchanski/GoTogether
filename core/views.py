@@ -1,175 +1,174 @@
-from django.shortcuts import render
-from rest_framework import viewsets, permissions
-from rest_framework.decorators import api_view
+from rest_framework import viewsets, permissions, status, filters
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
-from .models import User, Trip, Booking, Message, Review
-from .serializers import UserSerializer, TripSerializer, BookingSerializer, MessageSerializer, ReviewSerializer
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import viewsets, filters
-from .models import Trip
-from .serializers import TripSerializer
-from .filters import TripFilter  # <- наш кастомний FilterSet
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from rest_framework import status
-from .serializers import UserRegisterSerializer
-from django.shortcuts import render, redirect
-from django.contrib.auth import authenticate, login, logout
-from django.contrib import messages
-from .serializers import UserSerializer
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from .models import User
-from .serializers import RegisterSerializer
+from rest_framework.permissions import IsAuthenticatedOrReadOnly, AllowAny, IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView
-from .serializers import EmailTokenObtainPairSerializer
+
+from .models import Trip, Booking, Message, Review, Car
+from .serializers import (
+    UserSerializer,
+    TripSerializer,
+    BookingSerializer,
+    MessageSerializer,
+    ReviewSerializer,
+    CarSerializer,
+    RegisterSerializer,
+    EmailTokenObtainPairSerializer,
+)
+from .filters import TripFilter
+
 
 # ----------------------------------------
-# 1. Головна сторінка
+# JWT LOGIN
 # ----------------------------------------
-def home(request):
-    return render(request, 'core/home.html')
-
-
-# ----------------------------------------
-# 2. ViewSets для REST API
-# ----------------------------------------
-
-class TripViewSet(viewsets.ModelViewSet):
-    """
-    CRUD для поїздок (Trip) з фільтрами, пошуком і сортуванням
-    """
-    queryset = Trip.objects.all().order_by('departure_time')
-    serializer_class = TripSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
-
-    # ------------------------
-    # Фільтри та пошук
-    # ------------------------
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_class = TripFilter      # підтримка фільтра по даті
-    search_fields = ['origin', 'destination']  # пошук за містами
-    ordering_fields = ['departure_time', 'price']  # сортування
-    ordering = ['departure_time']  # сортування за замовчуванням
-
-    # ------------------------
-    # Створення поїздки
-    # ------------------------
-    def perform_create(self, serializer):
-        """
-        Встановлюємо водія як поточного користувача
-        """
-        serializer.save(driver=self.request.user)
-
-class BookingViewSet(viewsets.ModelViewSet):
-    """
-    CRUD для бронювань (Booking)
-    """
-    queryset = Booking.objects.all()
-    serializer_class = BookingSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def perform_create(self, serializer):
-        # Встановлюємо пасажира як поточного користувача
-        serializer.save(passenger=self.request.user)
-
-
-class MessageViewSet(viewsets.ModelViewSet):
-    """
-    CRUD для повідомлень (Message)
-    """
-    queryset = Message.objects.all()
-    serializer_class = MessageSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def perform_create(self, serializer):
-        # Встановлюємо відправника як поточного користувача
-        serializer.save(sender=self.request.user)
-
-
-class ReviewViewSet(viewsets.ModelViewSet):
-    """
-    CRUD для відгуків (Review)
-    """
-    queryset = Review.objects.all()
-    serializer_class = ReviewSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def perform_create(self, serializer):
-        # Встановлюємо автора відгуку як поточного користувача
-        serializer.save(reviewer=self.request.user)
-
 class EmailLoginView(TokenObtainPairView):
     serializer_class = EmailTokenObtainPairSerializer
-# ----------------------------------------
-# 3. Ендпойнт для автокомпліту міст
-# ----------------------------------------
-@api_view(['GET'])
-@permission_classes([AllowAny])  # <- Дозволяємо доступ без логіну
-def cities(request):
-    origins = Trip.objects.values_list('origin', flat=True).distinct()
-    destinations = Trip.objects.values_list('destination', flat=True).distinct()
-    return Response({
-        'origins': list(origins),
-        'destinations': list(destinations)
-    })
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def register(request):
-    serializer = UserRegisterSerializer(data=request.data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response({'message': 'User registered successfully'}, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-def register_view(request):
-    if request.method == 'POST':
-        username = request.POST.get('username')
-        email = request.POST.get('email')
-        password = request.POST.get('password')
-
-        if User.objects.filter(username=username).exists():
-            messages.error(request, 'Користувач з таким ім\'ям вже існує!')
-            return redirect('register')
-
-        user = User.objects.create_user(username=username, email=email, password=password)
-        login(request, user)
-        return redirect('home')
-
-    return render(request, 'core/register.html')
 
 
 # ----------------------------------------
-# Сторінка логіну
+# REGISTER API
 # ----------------------------------------
-def login_view(request):
-    if request.method == 'POST':
-        username = request.POST.get('username')
-        password = request.POST.get('password')
-        user = authenticate(request, username=username, password=password)
-        if user:
-            login(request, user)
-            return redirect('home')
-        else:
-            messages.error(request, 'Неправильний логін або пароль')
-            return redirect('login')
-    return render(request, 'core/login.html')
-
-
-# ----------------------------------------
-# Вихід
-# ----------------------------------------
-def logout_view(request):
-    logout(request)
-    return redirect('home')
-
-@api_view(['POST'])
+@api_view(["POST"])
 @permission_classes([AllowAny])
 def register(request):
     serializer = RegisterSerializer(data=request.data)
     if serializer.is_valid():
         serializer.save()
-        return Response({"message": "Користувач створений"}, status=201)
-    return Response(serializer.errors, status=400)
+        return Response({"message": "Користувач створений"}, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ----------------------------------------
+# CURRENT USER (ME)
+# ----------------------------------------
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def me(request):
+    # Повертаємо дані залогіненого користувача
+    serializer = UserSerializer(request.user)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# ----------------------------------------
+# TRIP VIEWSET (ПОЇЗДКИ)
+# ----------------------------------------
+class TripViewSet(viewsets.ModelViewSet):
+    queryset = Trip.objects.all().order_by("departure_time")
+    serializer_class = TripSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = TripFilter
+    search_fields = ["origin", "destination"]
+    ordering_fields = ["departure_time", "price_per_seat"]
+    ordering = ["departure_time"]
+
+    def perform_create(self, serializer):
+        # тільки водій може створювати поїздки
+        if not self.request.user.is_driver:
+            raise permissions.PermissionDenied("Тільки водії можуть створювати поїздки")
+        serializer.save(driver=self.request.user)
+
+    @action(detail=True, methods=["post"])
+    def complete(self, request, pk=None):
+        trip = self.get_object()
+
+        if trip.driver != request.user:
+            return Response({"error": "Ви не водій цієї поїздки"}, status=status.HTTP_403_FORBIDDEN)
+
+        trip.status = "completed"
+        trip.save()
+        return Response({"message": "Поїздку завершено"}, status=status.HTTP_200_OK)
+
+
+# ----------------------------------------
+# BOOKING VIEWSET
+# ----------------------------------------
+class BookingViewSet(viewsets.ModelViewSet):
+    queryset = Booking.objects.all()
+    serializer_class = BookingSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        serializer.save(passenger=self.request.user)
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        booking = self.get_object()
+
+        if booking.trip.driver != request.user:
+            return Response({"error": "Ви не водій цієї поїздки"}, status=status.HTTP_403_FORBIDDEN)
+
+        if booking.trip.seats_available < booking.seats_booked:
+            return Response({"error": "Недостатньо місць"}, status=status.HTTP_400_BAD_REQUEST)
+
+        booking.status = "approved"
+        booking.save()
+
+        trip = booking.trip
+        trip.seats_available -= booking.seats_booked
+        if trip.seats_available == 0:
+            trip.status = "full"
+        trip.save()
+
+        return Response({"message": "Бронювання підтверджено"}, status=status.HTTP_200_OK)
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        booking = self.get_object()
+
+        if booking.trip.driver != request.user:
+            return Response({"error": "Ви не водій цієї поїздки"}, status=status.HTTP_403_FORBIDDEN)
+
+        booking.status = "rejected"
+        booking.save()
+        return Response({"message": "Бронювання відхилено"}, status=status.HTTP_200_OK)
+
+
+# ----------------------------------------
+# CAR VIEWSET
+# ----------------------------------------
+class CarViewSet(viewsets.ModelViewSet):
+    queryset = Car.objects.all()
+    serializer_class = CarSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        if not self.request.user.is_driver:
+            raise permissions.PermissionDenied("Тільки водії можуть додавати авто")
+        serializer.save(driver=self.request.user)
+
+
+# ----------------------------------------
+# MESSAGE VIEWSET
+# ----------------------------------------
+class MessageViewSet(viewsets.ModelViewSet):
+    queryset = Message.objects.all()
+    serializer_class = MessageSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        serializer.save(sender=self.request.user)
+
+
+# ----------------------------------------
+# REVIEW VIEWSET
+# ----------------------------------------
+class ReviewViewSet(viewsets.ModelViewSet):
+    queryset = Review.objects.all()
+    serializer_class = ReviewSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        serializer.save(reviewer=self.request.user)
+
+
+# ----------------------------------------
+# CITIES AUTOCOMPLETE
+# ----------------------------------------
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def cities(request):
+    origins = Trip.objects.values_list("origin", flat=True).distinct()
+    destinations = Trip.objects.values_list("destination", flat=True).distinct()
+    return Response({"origins": list(origins), "destinations": list(destinations)}, status=status.HTTP_200_OK)

@@ -1,53 +1,96 @@
 from rest_framework import serializers
-from .models import User, Trip, Booking, Message, Review
+from .models import User, Trip, Booking, Message, Review, Car
 from django.contrib.auth.password_validation import validate_password
-from django.utils import timezone
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import authenticate
 
 
+# ----------------------------------------
+# USER
+# ----------------------------------------
 
-# ----------------------------------------
-# 1. Користувач
-# ----------------------------------------
 class UserSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ['id', 'username', 'email', 'phone_number', 'avatar', 'rating']
-
-class UserRegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True)
-    is_driver = serializers.BooleanField(default=False)  # нове поле для ролі
+    full_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['email', 'password', 'phone_number', 'avatar']
+        fields = ['id', 'email', 'full_name', 'phone_number', 'avatar', 'rating', 'is_driver']
+
+    def get_full_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}"
+
+
+class RegisterSerializer(serializers.ModelSerializer):
+    password2 = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = (
+            'email',
+            'password',
+            'password2',
+            'first_name',
+            'last_name',
+            'phone_number',
+        )
+        extra_kwargs = {
+            'password': {'write_only': True}
+        }
+
+    def validate(self, attrs):
+        if attrs['password'] != attrs['password2']:
+            raise serializers.ValidationError(
+                {"password": "Паролі не співпадають"}
+            )
+
+        if User.objects.filter(email=attrs['email']).exists():
+            raise serializers.ValidationError(
+                {"email": "Ця пошта вже використовується"}
+            )
+
+        return attrs
 
     def create(self, validated_data):
-        user = User(
+        validated_data.pop('password2')
+
+        user = User.objects.create_user(
             email=validated_data['email'],
-            phone_number=validated_data.get('phone_number', ''),
-            avatar=validated_data.get('avatar', None),
-            is_driver=validated_data.get('is_driver', False)
+            password=validated_data['password'],
+            first_name=validated_data['first_name'],
+            last_name=validated_data['last_name'],
+            phone_number=validated_data['phone_number'],
         )
-        user.set_password(validated_data['password'])
-        user.save()
+
         return user
+
 # ----------------------------------------
-# 2. Поїздка
+# CAR
 # ----------------------------------------
+
+class CarSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Car
+        fields = '__all__'
+        read_only_fields = ['driver']
+
+
+# ----------------------------------------
+# TRIP (створює водій)
+# ----------------------------------------
+
 class TripSerializer(serializers.ModelSerializer):
     driver = UserSerializer(read_only=True)
-    status = serializers.CharField(read_only=True)  # planned, completed, canceled
 
     class Meta:
         model = Trip
         fields = '__all__'
-        read_only_fields = ['driver', 'created_at', 'seats_available', 'status']
+        read_only_fields = ['driver', 'status', 'created_at', 'seats_available']
+
 
 # ----------------------------------------
-# 3. Бронювання
+# BOOKING (заявка пасажира)
 # ----------------------------------------
+
 class BookingSerializer(serializers.ModelSerializer):
     passenger = UserSerializer(read_only=True)
     trip = TripSerializer(read_only=True)
@@ -55,19 +98,21 @@ class BookingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
         fields = '__all__'
-        read_only_fields = ['passenger', 'booked_at']
+        read_only_fields = ['passenger', 'status', 'booked_at']
 
     def create(self, validated_data):
-        booking = super().create(validated_data)
-        # Зменшуємо кількість доступних місць
-        trip = booking.trip
-        trip.seats_available -= booking.seats_booked
-        trip.save()
-        return booking
+        """
+        Створюємо заявку.
+        Місця НЕ зменшуємо тут.
+        Водій повинен підтвердити.
+        """
+        return super().create(validated_data)
+
 
 # ----------------------------------------
-# 4. Повідомлення
+# MESSAGE
 # ----------------------------------------
+
 class MessageSerializer(serializers.ModelSerializer):
     sender = UserSerializer(read_only=True)
 
@@ -75,9 +120,11 @@ class MessageSerializer(serializers.ModelSerializer):
         model = Message
         fields = '__all__'
 
+
 # ----------------------------------------
-# 5. Відгуки
+# REVIEW
 # ----------------------------------------
+
 class ReviewSerializer(serializers.ModelSerializer):
     reviewer = UserSerializer(read_only=True)
 
@@ -85,33 +132,10 @@ class ReviewSerializer(serializers.ModelSerializer):
         model = Review
         fields = '__all__'
 
-class RegisterSerializer(serializers.ModelSerializer):
-    password2 = serializers.CharField(write_only=True)
 
-    class Meta:
-        model = User
-        fields = ('email', 'password', 'password2', 'first_name', 'last_name', 'phone_number', 'avatar')
-        extra_kwargs = {
-            'password': {'write_only': True, 'validators': [validate_password]},
-        }
-
-    def validate(self, attrs):
-        if attrs['password'] != attrs['password2']:
-            raise serializers.ValidationError({"non_field_errors": ["Паролі не співпадають"]})
-        if User.objects.filter(email=attrs['email']).exists():
-            raise serializers.ValidationError({"email": ["Ця пошта вже використовується"]})
-        return attrs
-
-    def create(self, validated_data):
-        validated_data.pop('password2')  # видаляємо повторний пароль
-        user = User.objects.create_user(
-            email=validated_data['email'],
-            password=validated_data['password'],
-            first_name=validated_data.get('first_name', ''),
-            last_name=validated_data.get('last_name', ''),
-
-        )
-        return user
+# ----------------------------------------
+# LOGIN JWT
+# ----------------------------------------
 
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
     username_field = 'email'
@@ -137,8 +161,14 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         data["user"] = {
             "id": user.id,
             "email": user.email,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
+            "full_name": f"{user.first_name} {user.last_name}",
+            "is_driver": user.is_driver,
         }
 
         return data
+# serializers.py
+
+class MeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'email', 'first_name', 'last_name', 'is_driver']
