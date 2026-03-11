@@ -1,26 +1,33 @@
-from rest_framework import routers
 from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+
 from .views import (
     TripViewSet,
     BookingViewSet,
+    CarViewSet,
     MessageViewSet,
     ReviewViewSet,
-    cities,
-    register,
     EmailLoginView,
-    me
+    register,
+    me,
+    cities
 )
 
-router = routers.DefaultRouter()
-router.register(r'trips', TripViewSet, basename='trips')
-router.register(r'bookings', BookingViewSet, basename='bookings')
-router.register(r'messages', MessageViewSet, basename='messages')
-router.register(r'reviews', ReviewViewSet, basename='reviews')
+router = DefaultRouter()
+
+router.register(r"trips", TripViewSet)
+router.register(r"bookings", BookingViewSet)
+router.register(r"cars", CarViewSet)
+router.register(r"messages", MessageViewSet)
+router.register(r"reviews", ReviewViewSet)
 
 urlpatterns = [
-    path('', include(router.urls)),
-    path('cities/', cities, name="cities"),
-    path('api/register/', register, name='register'),
-    path('token/', EmailLoginView.as_view(), name="token_obtaim_pair"),
-    path('api/me/', me, name="me"),
+    path("", include(router.urls)),
+
+    path("register/", register),
+    path("me/", me),
+
+    path("cities/", cities),
+
+    path("token/", EmailLoginView.as_view()),
 ]

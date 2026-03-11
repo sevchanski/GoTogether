@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.permissions import IsAuthenticatedOrReadOnly, AllowAny, IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView
+from django.db import transaction
 
 from .models import Trip, Booking, Message, Review, Car
 from .serializers import (
@@ -60,12 +61,15 @@ class TripViewSet(viewsets.ModelViewSet):
 
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = TripFilter
-    search_fields = ["origin", "destination"]
+
+    # ✅ ДОДАЛИ route_summary + city до search_fields
+    # Тепер можна: /api/trips/?search=Хрещатик
+    search_fields = ["origin", "destination", "city", "route_summary"]
+
     ordering_fields = ["departure_time", "price_per_seat"]
     ordering = ["departure_time"]
 
     def perform_create(self, serializer):
-        # тільки водій може створювати поїздки
         if not self.request.user.is_driver:
             raise permissions.PermissionDenied("Тільки водії можуть створювати поїздки")
         serializer.save(driver=self.request.user)
@@ -73,7 +77,6 @@ class TripViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def complete(self, request, pk=None):
         trip = self.get_object()
-
         if trip.driver != request.user:
             return Response({"error": "Ви не водій цієї поїздки"}, status=status.HTTP_403_FORBIDDEN)
 
@@ -88,41 +91,57 @@ class TripViewSet(viewsets.ModelViewSet):
 class BookingViewSet(viewsets.ModelViewSet):
     queryset = Booking.objects.all()
     serializer_class = BookingSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # пасажир бачить свої бронювання
+        return Booking.objects.filter(passenger=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(passenger=self.request.user)
+        serializer.save()
 
     @action(detail=True, methods=["post"])
-    def approve(self, request, pk=None):
+    def confirm_payment(self, request, pk=None):
         booking = self.get_object()
 
-        if booking.trip.driver != request.user:
-            return Response({"error": "Ви не водій цієї поїздки"}, status=status.HTTP_403_FORBIDDEN)
+        if booking.passenger != request.user:
+            return Response(
+                {"detail": "Це не ваше бронювання"},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
-        if booking.trip.seats_available < booking.seats_booked:
-            return Response({"error": "Недостатньо місць"}, status=status.HTTP_400_BAD_REQUEST)
+        if booking.status != "pending_payment":
+            return Response(
+                {"detail": "Бронювання не очікує оплату"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        booking.status = "approved"
-        booking.save()
+        with transaction.atomic():
+            trip = Trip.objects.select_for_update().get(pk=booking.trip.pk)
 
-        trip = booking.trip
-        trip.seats_available -= booking.seats_booked
-        if trip.seats_available == 0:
-            trip.status = "full"
-        trip.save()
+            if trip.seats_available < booking.seats_booked:
+                return Response(
+                    {"detail": "Недостатньо місць"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-        return Response({"message": "Бронювання підтверджено"}, status=status.HTTP_200_OK)
-    @action(detail=True, methods=["post"])
-    def reject(self, request, pk=None):
-        booking = self.get_object()
+            trip.seats_available -= booking.seats_booked
 
-        if booking.trip.driver != request.user:
-            return Response({"error": "Ви не водій цієї поїздки"}, status=status.HTTP_403_FORBIDDEN)
+            if trip.seats_available == 0:
+                trip.status = "full"
 
-        booking.status = "rejected"
-        booking.save()
-        return Response({"message": "Бронювання відхилено"}, status=status.HTTP_200_OK)
+            trip.save()
+
+            booking.status = "approved"
+            booking.save()
+
+        return Response(
+            {
+                "message": "Оплата підтверджена",
+                "booking_id": booking.id
+            },
+            status=status.HTTP_200_OK
+        )
 
 
 # ----------------------------------------

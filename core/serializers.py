@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from .models import User, Trip, Booking, Message, Review, Car
-from django.contrib.auth.password_validation import validate_password
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import authenticate
 
@@ -14,10 +13,18 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'full_name', 'phone_number', 'avatar', 'rating', 'is_driver']
+        fields = [
+            "id",
+            "email",
+            "full_name",
+            "phone_number",
+            "avatar",
+            "rating",
+            "is_driver",
+        ]
 
     def get_full_name(self, obj):
-        return f"{obj.first_name} {obj.last_name}"
+        return f"{obj.first_name} {obj.last_name}".strip()
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -26,24 +33,24 @@ class RegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = (
-            'email',
-            'password',
-            'password2',
-            'first_name',
-            'last_name',
-            'phone_number',
+            "email",
+            "password",
+            "password2",
+            "first_name",
+            "last_name",
+            "phone_number",
         )
         extra_kwargs = {
-            'password': {'write_only': True}
+            "password": {"write_only": True}
         }
 
     def validate(self, attrs):
-        if attrs['password'] != attrs['password2']:
+        if attrs["password"] != attrs["password2"]:
             raise serializers.ValidationError(
                 {"password": "Паролі не співпадають"}
             )
 
-        if User.objects.filter(email=attrs['email']).exists():
+        if User.objects.filter(email=attrs["email"]).exists():
             raise serializers.ValidationError(
                 {"email": "Ця пошта вже використовується"}
             )
@@ -51,17 +58,17 @@ class RegisterSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        validated_data.pop('password2')
+        validated_data.pop("password2")
 
         user = User.objects.create_user(
-            email=validated_data['email'],
-            password=validated_data['password'],
-            first_name=validated_data['first_name'],
-            last_name=validated_data['last_name'],
-            phone_number=validated_data['phone_number'],
+            email=validated_data["email"],
+            password=validated_data["password"],
+            first_name=validated_data["first_name"],
+            last_name=validated_data["last_name"],
+            phone_number=validated_data["phone_number"],
         )
-
         return user
+
 
 # ----------------------------------------
 # CAR
@@ -70,12 +77,12 @@ class RegisterSerializer(serializers.ModelSerializer):
 class CarSerializer(serializers.ModelSerializer):
     class Meta:
         model = Car
-        fields = '__all__'
-        read_only_fields = ['driver']
+        fields = "__all__"
+        read_only_fields = ["driver"]
 
 
 # ----------------------------------------
-# TRIP (створює водій)
+# TRIP
 # ----------------------------------------
 
 class TripSerializer(serializers.ModelSerializer):
@@ -83,30 +90,82 @@ class TripSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Trip
-        fields = '__all__'
-        read_only_fields = ['driver', 'status', 'created_at', 'seats_available']
+        fields = "__all__"
+        read_only_fields = ["driver", "status", "created_at", "seats_available"]
 
 
 # ----------------------------------------
-# BOOKING (заявка пасажира)
+# BOOKING
 # ----------------------------------------
 
 class BookingSerializer(serializers.ModelSerializer):
     passenger = UserSerializer(read_only=True)
-    trip = TripSerializer(read_only=True)
+
+    # при створенні бронювання приймаємо trip як ID
+    trip = serializers.PrimaryKeyRelatedField(
+        queryset=Trip.objects.all(),
+        write_only=True
+    )
+
+    # для фронтенду / checkout віддаємо повну поїздку
+    trip_details = TripSerializer(source="trip", read_only=True)
+
+    total_price = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Booking
-        fields = '__all__'
-        read_only_fields = ['passenger', 'status', 'booked_at']
+        fields = [
+            "id",
+            "trip",
+            "trip_details",
+            "passenger",
+            "seats_booked",
+            "status",
+            "booked_at",
+            "total_price",
+        ]
+        read_only_fields = ["passenger", "status", "booked_at", "total_price"]
+
+    def get_total_price(self, obj):
+        try:
+            return float(obj.trip.price_per_seat) * int(obj.seats_booked)
+        except Exception:
+            return None
+
+    def validate(self, attrs):
+        request = self.context["request"]
+        trip = attrs["trip"]
+        seats = int(attrs.get("seats_booked", 1))
+
+        if seats <= 0:
+            raise serializers.ValidationError({
+                "seats_booked": "Має бути > 0"
+            })
+
+        if trip.driver_id == request.user.id:
+            raise serializers.ValidationError({
+                "trip": "Водій не може бронювати свою поїздку"
+            })
+
+        if trip.status in ("canceled", "completed"):
+            raise serializers.ValidationError({
+                "trip": "Поїздка недоступна"
+            })
+
+        if trip.seats_available < seats:
+            raise serializers.ValidationError({
+                "seats_booked": "Недостатньо місць"
+            })
+
+        return attrs
 
     def create(self, validated_data):
-        """
-        Створюємо заявку.
-        Місця НЕ зменшуємо тут.
-        Водій повинен підтвердити.
-        """
-        return super().create(validated_data)
+        request = self.context["request"]
+        return Booking.objects.create(
+            passenger=request.user,
+            status="pending_payment",
+            **validated_data
+        )
 
 
 # ----------------------------------------
@@ -118,7 +177,7 @@ class MessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = '__all__'
+        fields = "__all__"
 
 
 # ----------------------------------------
@@ -130,7 +189,7 @@ class ReviewSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Review
-        fields = '__all__'
+        fields = "__all__"
 
 
 # ----------------------------------------
@@ -138,14 +197,14 @@ class ReviewSerializer(serializers.ModelSerializer):
 # ----------------------------------------
 
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
-    username_field = 'email'
+    username_field = "email"
 
     def validate(self, attrs):
         email = attrs.get("email")
         password = attrs.get("password")
 
         user = authenticate(
-            request=self.context.get('request'),
+            request=self.context.get("request"),
             email=email,
             password=password
         )
@@ -166,9 +225,13 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         }
 
         return data
-# serializers.py
+
+
+# ----------------------------------------
+# CURRENT USER / ME
+# ----------------------------------------
 
 class MeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'email', 'first_name', 'last_name', 'is_driver']
+        fields = ["id", "email", "first_name", "last_name", "is_driver"]

@@ -3,6 +3,7 @@ from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseU
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db.models import Avg
+from decimal import Decimal
 
 
 # ----------------------------------------
@@ -39,7 +40,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     phone_number = models.CharField(max_length=20, blank=True)
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
-    rating = models.DecimalField(max_digits=3, decimal_places=2, default=5.0)
+    rating = models.DecimalField(max_digits=3, decimal_places=2, default=Decimal("5.00"))
 
     is_driver = models.BooleanField(default=False)
 
@@ -55,7 +56,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     REQUIRED_FIELDS = ['first_name', 'last_name']
 
     def __str__(self):
-        return f"{self.first_name} {self.last_name}"
+        return f"{self.first_name} {self.last_name}".strip() or self.email
 
 
 # ----------------------------------------
@@ -76,34 +77,54 @@ class Car(models.Model):
 # ----------------------------------------
 # TRIP
 # ----------------------------------------
+
 class Trip(models.Model):
-    driver = models.ForeignKey(User, on_delete=models.CASCADE)
+    driver = models.ForeignKey(User, on_delete=models.CASCADE, related_name="driven_trips")
 
-    city = models.CharField(max_length=100)
+    # ✅ Місто (для фільтрів + обмеження пошуку адрес)
+    city = models.CharField(max_length=100, default="Kyiv", db_index=True)
 
-    origin = models.CharField(max_length=255)
-    origin_lat = models.FloatField()
-    origin_lng = models.FloatField()
+    origin = models.CharField(max_length=255, db_index=True)
+    destination = models.CharField(max_length=255, db_index=True)
 
-    destination = models.CharField(max_length=255)
-    destination_lat = models.FloatField()
-    destination_lng = models.FloatField()
+    # ✅ Координати залишаємо nullable (бо на старті можуть бути відсутні)
+    origin_lat = models.FloatField(null=True, blank=True)
+    origin_lng = models.FloatField(null=True, blank=True)
+    destination_lat = models.FloatField(null=True, blank=True)
+    destination_lng = models.FloatField(null=True, blank=True)
 
+    # GeoJSON/Polyline маршруту
     route_geometry = models.JSONField(null=True, blank=True)
+
+    # ✅ ДОДАЛИ: текстова “коротка” версія маршруту для пошуку по вулицях
+    # сюди зберігай щось типу: "Хрещатик, Саксаганського, ... (без індексів/областей)"
+    route_summary = models.TextField(blank=True, default="", db_index=True)
 
     distance_km = models.FloatField(null=True, blank=True)
     duration_min = models.IntegerField(null=True, blank=True)
 
-    departure_time = models.DateTimeField()
+    departure_time = models.DateTimeField(db_index=True)
 
-    seats_total = models.IntegerField()
-    seats_available = models.IntegerField()
+    seats_total = models.PositiveIntegerField(default=1)
+    seats_available = models.PositiveIntegerField(default=1)
 
-    price_per_seat = models.DecimalField(max_digits=8, decimal_places=2)
+    price_per_seat = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal("0.00"))
 
-    status = models.CharField(max_length=20, default="active")
+    STATUS_CHOICES = (
+        ("active", "Active"),
+        ("full", "Full"),
+        ("completed", "Completed"),
+        ("canceled", "Canceled"),
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active", db_index=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        # ✅ при створенні синхронізуємо seats_available
+        if not self.pk:
+            self.seats_available = self.seats_total
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.origin} → {self.destination}"
@@ -120,22 +141,30 @@ class Booking(models.Model):
     seats_booked = models.PositiveIntegerField(default=1)
 
     STATUS_CHOICES = (
+        ('pending_payment', 'Pending payment'),
         ('pending', 'Pending'),
         ('approved', 'Approved'),
         ('rejected', 'Rejected'),
         ('canceled', 'Canceled'),
     )
 
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending_payment'
+    )
+
     booked_at = models.DateTimeField(auto_now_add=True)
 
     def clean(self):
-        # ❌ Водій не може бронювати свою поїздку
         if self.trip.driver == self.passenger:
             raise ValidationError("Водій не може бронювати свою поїздку")
-
         if self.seats_booked <= 0:
             raise ValidationError("Кількість місць має бути більше 0")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.passenger} -> {self.trip}"
@@ -172,8 +201,9 @@ class Review(models.Model):
         # 🔥 Автоматичне оновлення рейтингу водія
         driver = self.trip.driver
         avg_rating = Review.objects.filter(trip__driver=driver).aggregate(Avg('rating'))['rating__avg']
-        driver.rating = round(avg_rating, 2)
-        driver.save()
+        if avg_rating is not None:
+            driver.rating = Decimal(str(round(avg_rating, 2)))
+            driver.save(update_fields=["rating"])
 
     def __str__(self):
-        return f"{self.reviewer} ({self.rating}⭐)"
+        return f"{self.reviewer} ({self.rating}⭐️)"
