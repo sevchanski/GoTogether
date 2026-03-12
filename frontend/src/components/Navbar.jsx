@@ -84,7 +84,7 @@ export default function Navbar() {
           </Link>
         )}
 
-        {/* ✅ Для всіх (гостей теж) — "Пошук поїздок" */}
+        {/* ✅ Для всіх — "Пошук поїздок" */}
         <Link to="/trips" style={styles.link}>
           Пошук поїздок
         </Link>
@@ -164,7 +164,7 @@ function MenuItem({ children, onClick, danger }) {
       type="button"
       onClick={onClick}
       style={{ ...styles.item, ...(danger ? styles.itemDanger : {}) }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.12)")}
       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
     >
       {children}
@@ -177,12 +177,13 @@ const styles = {
     display: "flex",
     justifyContent: "space-between",
     padding: "14px 28px",
-    backgroundColor: "#111",
+    backgroundColor: "#0052cc", // Синій фон
     color: "white",
     alignItems: "center",
     position: "sticky",
     top: 0,
     zIndex: 10,
+    boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
   },
   logo: {
     color: "white",
@@ -200,10 +201,10 @@ const styles = {
     color: "white",
     textDecoration: "none",
     fontSize: 14,
-    opacity: 0.88,
+    opacity: 0.9,
   },
   primaryLink: {
-    color: "#111",
+    color: "#0052cc", // Синій текст для білої кнопки
     background: "#fff",
     textDecoration: "none",
     fontSize: 14,
@@ -223,7 +224,7 @@ const styles = {
   },
   caret: {
     color: "white",
-    opacity: 0.7,
+    opacity: 0.8,
     fontSize: 12,
     transform: "translateY(1px)",
     transition: "transform 0.15s ease",
@@ -237,7 +238,7 @@ const styles = {
     borderRadius: "999px",
     objectFit: "cover",
     display: "block",
-    border: "2px solid rgba(255,255,255,0.25)",
+    border: "2px solid rgba(255,255,255,0.4)",
   },
   avatarFallback: {
     width: 36,
@@ -245,8 +246,8 @@ const styles = {
     borderRadius: "999px",
     display: "grid",
     placeItems: "center",
-    background: "rgba(255,255,255,0.15)",
-    border: "2px solid rgba(255,255,255,0.25)",
+    background: "rgba(255,255,255,0.2)",
+    border: "2px solid rgba(255,255,255,0.4)",
     color: "white",
     fontWeight: 800,
     fontSize: 13,
@@ -256,11 +257,11 @@ const styles = {
     right: 0,
     top: 46,
     width: 260,
-    background: "#1b1b1b",
-    border: "1px solid rgba(255,255,255,0.12)",
+    background: "#0041a3", // Темніший синій для меню
+    border: "1px solid rgba(255,255,255,0.15)",
     borderRadius: 12,
     overflow: "hidden",
-    boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
     zIndex: 50,
   },
   dropdownHeader: {
@@ -269,15 +270,17 @@ const styles = {
   dropdownName: {
     fontWeight: 800,
     fontSize: 14,
+    color: "white",
   },
   dropdownSub: {
     marginTop: 2,
     fontSize: 12,
+    color: "white",
     opacity: 0.7,
   },
   hr: {
     height: 1,
-    background: "rgba(255,255,255,0.1)",
+    background: "rgba(255,255,255,0.15)",
   },
   item: {
     width: "100%",
@@ -288,10 +291,9 @@ const styles = {
     color: "white",
     cursor: "pointer",
     fontSize: 14,
-    opacity: 0.92,
   },
   itemDanger: {
-    color: "#ff6b6b",
+    color: "#ffabab", // Ніжно-червоний для синього фону
     fontWeight: 700,
   },
 };

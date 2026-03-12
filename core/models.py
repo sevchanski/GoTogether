@@ -189,21 +189,66 @@ class Message(models.Model):
 # ----------------------------------------
 
 class Review(models.Model):
-    trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name='reviews')
-    reviewer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews_written')
+    trip = models.ForeignKey(
+        Trip,
+        on_delete=models.CASCADE,
+        related_name='reviews'
+    )
+
+    reviewer = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='reviews_written'
+    )
+
+    reviewee = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='reviews_received'
+    )
+
     rating = models.PositiveSmallIntegerField(default=5)
     comment = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        unique_together = ("trip", "reviewer", "reviewee")
+
+    def clean(self):
+        if self.reviewer == self.reviewee:
+            raise ValidationError("Не можна залишати відгук самому собі")
+
+        if self.trip.status != "completed":
+            raise ValidationError("Відгук можна залишити лише після завершення поїздки")
+
+        # учасники поїздки:
+        # водій + пасажири з approved бронюванням
+        approved_passengers = list(
+            User.objects.filter(
+                bookings__trip=self.trip,
+                bookings__status="approved"
+            ).distinct()
+        )
+
+        participants = approved_passengers + [self.trip.driver]
+
+        if self.reviewer not in participants:
+            raise ValidationError("Ви не є учасником цієї поїздки")
+
+        if self.reviewee not in participants:
+            raise ValidationError("Цей користувач не є учасником цієї поїздки")
+
     def save(self, *args, **kwargs):
+        self.full_clean()
         super().save(*args, **kwargs)
 
-        # 🔥 Автоматичне оновлення рейтингу водія
-        driver = self.trip.driver
-        avg_rating = Review.objects.filter(trip__driver=driver).aggregate(Avg('rating'))['rating__avg']
+        avg_rating = Review.objects.filter(
+            reviewee=self.reviewee
+        ).aggregate(Avg('rating'))['rating__avg']
+
         if avg_rating is not None:
-            driver.rating = Decimal(str(round(avg_rating, 2)))
-            driver.save(update_fields=["rating"])
+            self.reviewee.rating = Decimal(str(round(avg_rating, 2)))
+            self.reviewee.save(update_fields=["rating"])
 
     def __str__(self):
-        return f"{self.reviewer} ({self.rating}⭐️)"
+        return f"{self.reviewer} -> {self.reviewee} ({self.rating}⭐)"

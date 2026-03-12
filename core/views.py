@@ -77,11 +77,22 @@ class TripViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def complete(self, request, pk=None):
         trip = self.get_object()
+
         if trip.driver != request.user:
-            return Response({"error": "Ви не водій цієї поїздки"}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {"error": "Ви не водій цієї поїздки"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if trip.status == "completed":
+            return Response(
+                {"error": "Поїздка вже завершена"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         trip.status = "completed"
         trip.save()
+
         return Response({"message": "Поїздку завершено"}, status=status.HTTP_200_OK)
 
 
@@ -89,27 +100,95 @@ class TripViewSet(viewsets.ModelViewSet):
 # BOOKING VIEWSET
 # ----------------------------------------
 class BookingViewSet(viewsets.ModelViewSet):
-    queryset = Booking.objects.all()
+    queryset = Booking.objects.select_related("trip", "trip__driver", "passenger").all()
     serializer_class = BookingSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        user = self.request.user
+
         # пасажир бачить свої бронювання
-        return Booking.objects.filter(passenger=self.request.user)
+        passenger_bookings = Booking.objects.filter(passenger=user)
+
+        # водій бачить заявки на свої поїздки
+        driver_bookings = Booking.objects.filter(trip__driver=user)
+
+        return (passenger_bookings | driver_bookings).distinct()
 
     def perform_create(self, serializer):
         serializer.save()
 
     @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        booking = self.get_object()
+
+        # тільки водій цієї поїздки може підтвердити
+        if booking.trip.driver != request.user:
+            return Response(
+                {"detail": "Це не ваша поїздка"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # підтверджувати можна тільки нову заявку
+        if booking.status != "pending":
+            return Response(
+                {"detail": "Заявка вже оброблена"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # перевірка місць
+        if booking.trip.seats_available < booking.seats_booked:
+            return Response(
+                {"detail": "Недостатньо місць"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # заявка підтверджена, тепер можна оплачувати
+        booking.status = "pending_payment"
+        booking.save()
+
+        return Response(
+            {"message": "Заявку підтверджено"},
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        booking = self.get_object()
+
+        # тільки водій цієї поїздки може відхилити
+        if booking.trip.driver != request.user:
+            return Response(
+                {"detail": "Це не ваша поїздка"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if booking.status != "pending":
+            return Response(
+                {"detail": "Заявка вже оброблена"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        booking.status = "rejected"
+        booking.save()
+
+        return Response(
+            {"message": "Заявку відхилено"},
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=True, methods=["post"])
     def confirm_payment(self, request, pk=None):
         booking = self.get_object()
 
+        # тільки пасажир цього бронювання може оплатити
         if booking.passenger != request.user:
             return Response(
                 {"detail": "Це не ваше бронювання"},
                 status=status.HTTP_403_FORBIDDEN
             )
 
+        # оплачувати можна тільки після підтвердження водієм
         if booking.status != "pending_payment":
             return Response(
                 {"detail": "Бронювання не очікує оплату"},
@@ -125,6 +204,7 @@ class BookingViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
+            # місця списуються тільки після оплати
             trip.seats_available -= booking.seats_booked
 
             if trip.seats_available == 0:
@@ -141,6 +221,7 @@ class BookingViewSet(viewsets.ModelViewSet):
                 "booking_id": booking.id
             },
             status=status.HTTP_200_OK
+
         )
 
 
@@ -174,13 +255,21 @@ class MessageViewSet(viewsets.ModelViewSet):
 # REVIEW VIEWSET
 # ----------------------------------------
 class ReviewViewSet(viewsets.ModelViewSet):
-    queryset = Review.objects.all()
+    queryset = Review.objects.select_related("trip", "reviewer", "reviewee").all()
     serializer_class = ReviewSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        user = self.request.user
+
+        # показуємо відгуки, де юзер або автор, або отримувач
+        written = Review.objects.filter(reviewer=user)
+        received = Review.objects.filter(reviewee=user)
+
+        return (written | received).distinct()
+
     def perform_create(self, serializer):
         serializer.save(reviewer=self.request.user)
-
 
 # ----------------------------------------
 # CITIES AUTOCOMPLETE

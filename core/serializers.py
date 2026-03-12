@@ -163,7 +163,7 @@ class BookingSerializer(serializers.ModelSerializer):
         request = self.context["request"]
         return Booking.objects.create(
             passenger=request.user,
-            status="pending_payment",
+            status="pending",
             **validated_data
         )
 
@@ -186,10 +186,27 @@ class MessageSerializer(serializers.ModelSerializer):
 
 class ReviewSerializer(serializers.ModelSerializer):
     reviewer = UserSerializer(read_only=True)
+    reviewee = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+    trip = serializers.PrimaryKeyRelatedField(queryset=Trip.objects.all())
 
     class Meta:
         model = Review
         fields = "__all__"
+        read_only_fields = ["reviewer", "created_at"]
+
+    def validate(self, attrs):
+        request = self.context["request"]
+        reviewer = request.user
+        reviewee = attrs["reviewee"]
+        trip = attrs["trip"]
+
+        if reviewer == reviewee:
+            raise serializers.ValidationError("Не можна залишити відгук самому собі")
+
+        return attrs
+
+    def create(self, validated_data):
+        return Review.objects.create(**validated_data)
 
 
 # ----------------------------------------

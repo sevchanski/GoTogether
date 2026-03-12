@@ -22,9 +22,9 @@ function statusLabel(status) {
   switch (status) {
     case "pending":
       return "Очікує рішення водія";
-    case "approved_pending_payment":
+    case "pending_payment":
       return "Очікує оплату";
-    case "paid":
+    case "approved":
       return "Оплачено";
     case "rejected":
       return "Відхилено";
@@ -35,9 +35,24 @@ function statusLabel(status) {
   }
 }
 
+function tripStatusLabel(status) {
+  switch (status) {
+    case "active":
+      return "Активна";
+    case "full":
+      return "Заповнена";
+    case "completed":
+      return "Завершена";
+    case "canceled":
+      return "Скасована";
+    default:
+      return status;
+  }
+}
+
 export default function MyTrips() {
   const navigate = useNavigate();
-
+  const currentUser = JSON.parse(localStorage.getItem("user") || "null");
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -118,16 +133,23 @@ export default function MyTrips() {
   }, []);
 
   const passengerBookings = useMemo(() => {
-    return bookings.filter((b) => b.passenger);
-  }, [bookings]);
+  if (!currentUser?.id) return [];
+
+  return bookings.filter((b) => {
+    const passengerId = b.passenger?.id;
+    const driverId = b.trip_details?.driver?.id;
+
+    return passengerId === currentUser.id && driverId !== currentUser.id;
+  });
+}, [bookings, currentUser]);
 
   const grouped = useMemo(() => {
     return {
-      pending: passengerBookings.filter(b => b.status === "pending"),
-      payment: passengerBookings.filter(b => b.status === "approved_pending_payment"),
-      paid: passengerBookings.filter(b => b.status === "paid"),
+      pending: passengerBookings.filter((b) => b.status === "pending"),
+      payment: passengerBookings.filter((b) => b.status === "pending_payment"),
+      approved: passengerBookings.filter((b) => b.status === "approved"),
       others: passengerBookings.filter(
-        b => !["pending", "approved_pending_payment", "paid"].includes(b.status)
+        (b) => !["pending", "pending_payment", "approved"].includes(b.status)
       ),
     };
   }, [passengerBookings]);
@@ -150,6 +172,9 @@ export default function MyTrips() {
             </div>
             <div style={styles.meta}>
               {formatDateTime(trip.departure_time)}
+            </div>
+            <div style={styles.meta}>
+              Статус поїздки: <b>{tripStatusLabel(trip.status)}</b>
             </div>
           </div>
 
@@ -175,7 +200,7 @@ export default function MyTrips() {
           </div>
         </div>
 
-        {booking.status === "approved_pending_payment" && (
+        {booking.status === "pending_payment" && (
           <div style={styles.actions}>
             <button
               style={styles.primaryBtn}
@@ -185,6 +210,27 @@ export default function MyTrips() {
             </button>
           </div>
         )}
+
+        {booking.status === "approved" && (
+          <div style={styles.paidBox}>
+            Бронювання підтверджене та оплачене
+          </div>
+        )}
+
+        {booking.status === "approved" &&
+          trip.status === "completed" &&
+          trip.driver?.id && (
+            <div style={styles.actions}>
+              <button
+                style={styles.reviewBtn}
+                onClick={() =>
+                  navigate(`/leave-review?trip=${trip.id}&reviewee=${trip.driver.id}`)
+                }
+              >
+                Оцінити водія
+              </button>
+            </div>
+          )}
       </div>
     );
   };
@@ -221,11 +267,11 @@ export default function MyTrips() {
           </section>
         )}
 
-        {!!grouped.paid.length && (
+        {!!grouped.approved.length && (
           <section style={styles.section}>
-            <h3>Оплачені</h3>
+            <h3>Підтверджені</h3>
             <div style={styles.list}>
-              {grouped.paid.map(renderCard)}
+              {grouped.approved.map(renderCard)}
             </div>
           </section>
         )}
@@ -304,7 +350,8 @@ const styles = {
   actions: {
     marginTop: 16,
     display: "flex",
-    justifyContent: "flex-end"
+    justifyContent: "flex-end",
+    gap: 10
   },
   primaryBtn: {
     padding: "10px 14px",
@@ -313,6 +360,23 @@ const styles = {
     background: "#111",
     color: "white",
     cursor: "pointer",
+    fontWeight: 700
+  },
+  reviewBtn: {
+    padding: "10px 14px",
+    borderRadius: 12,
+    border: "none",
+    background: "#3730a3",
+    color: "white",
+    cursor: "pointer",
+    fontWeight: 700
+  },
+  paidBox: {
+    marginTop: 16,
+    background: "#e9fbe9",
+    color: "#1a7f37",
+    padding: 12,
+    borderRadius: 12,
     fontWeight: 700
   },
   error: {
@@ -338,10 +402,10 @@ const styles = {
     if (status === "pending") {
       bg = "#eef2ff";
       color = "#3730a3";
-    } else if (status === "approved_pending_payment") {
+    } else if (status === "pending_payment") {
       bg = "#fff7e6";
       color = "#9a6700";
-    } else if (status === "paid") {
+    } else if (status === "approved") {
       bg = "#e9fbe9";
       color = "#1a7f37";
     } else if (status === "rejected" || status === "canceled") {
