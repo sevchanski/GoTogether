@@ -9,22 +9,56 @@ from django.contrib.auth import authenticate
 # ----------------------------------------
 
 class UserSerializer(serializers.ModelSerializer):
-    full_name = serializers.SerializerMethodField()
+    trips_as_passenger = serializers.SerializerMethodField()
+    trips_as_driver = serializers.SerializerMethodField()
+    reviews_count = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             "id",
             "email",
-            "full_name",
+            "first_name",
+            "last_name",
             "phone_number",
             "avatar",
+            "avatar_url",
             "rating",
             "is_driver",
+            "trips_as_passenger",
+            "trips_as_driver",
+            "reviews_count",
+        ]
+        read_only_fields = [
+            "email",
+            "rating",
+            "is_driver",
+            "trips_as_passenger",
+            "trips_as_driver",
+            "reviews_count",
+            "avatar_url",
         ]
 
-    def get_full_name(self, obj):
-        return f"{obj.first_name} {obj.last_name}".strip()
+    def get_trips_as_passenger(self, obj):
+        return Booking.objects.filter(
+            passenger=obj,
+            status="approved"
+        ).count()
+
+    def get_trips_as_driver(self, obj):
+        return Trip.objects.filter(driver=obj).count()
+
+    def get_reviews_count(self, obj):
+        return Review.objects.filter(reviewee=obj).count()
+
+    def get_avatar_url(self, obj):
+        request = self.context.get("request")
+        if obj.avatar:
+            if request:
+                return request.build_absolute_uri(obj.avatar.url)
+            return obj.avatar.url
+        return None
 
 
 class RegisterSerializer(serializers.ModelSerializer):

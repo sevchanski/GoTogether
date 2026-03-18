@@ -3,10 +3,24 @@ import { useNavigate } from "react-router-dom";
 
 const API = "http://localhost:8000";
 
+// Функція фільтрації: прибираємо завершені поїздки
 function normalizeTripsResponse(data) {
-  if (Array.isArray(data)) return data;
-  if (data && Array.isArray(data.results)) return data.results;
-  return [];
+  let rawTrips = [];
+  if (Array.isArray(data)) rawTrips = data;
+  else if (data && Array.isArray(data.results)) rawTrips = data.results;
+
+  const now = new Date();
+
+  return rawTrips.filter(trip => {
+    // 1. Перевірка за часом: якщо час відправлення в минулому — видаляємо
+    const departureDate = new Date(trip.departure_time);
+    const isFuture = departureDate > now;
+
+    // 2. Перевірка за статусом (якщо бекенд його передає)
+    const isNotFinished = !['finished', 'completed', 'cancelled'].includes(trip.status?.toLowerCase());
+
+    return isFuture && isNotFinished;
+  });
 }
 
 function shortPlace(s) {
@@ -22,6 +36,18 @@ function shortPlace(s) {
 function toNumber(x, fallback = 0) {
   const n = Number(x);
   return Number.isFinite(n) ? n : fallback;
+}
+
+// Форматування дати для відображення (напр. 12 берез., 14:30)
+function formatDate(isoStr) {
+  if (!isoStr) return "";
+  const d = new Date(isoStr);
+  return d.toLocaleString("uk-UA", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export default function Trips() {
@@ -96,16 +122,12 @@ export default function Trips() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        // Виправлення: дістаємо чистий текст помилки
         let msg = "Сталася помилка при бронюванні";
         if (typeof data === "object" && data !== null) {
           const firstKey = Object.keys(data)[0];
           const val = data[firstKey];
           msg = Array.isArray(val) ? val[0] : val;
-        } else if (typeof data === "string") {
-          msg = data;
         }
-
         setErr(msg);
         setBookingId(null);
         return;
@@ -137,7 +159,7 @@ export default function Trips() {
         </div>
 
         <div style={styles.field}>
-          <label style={styles.label}>Пошук по маршруту / вулиці</label>
+          <label style={styles.label}>Маршрут / вулиця</label>
           <input
             style={styles.input}
             placeholder="Напр. Хрещатик"
@@ -159,6 +181,10 @@ export default function Trips() {
 
       {err && <div style={styles.error}>{err}</div>}
 
+      {!loading && trips.length === 0 && (
+        <div style={{ textAlign: "center", marginTop: 40, color: "#666" }}>Поїздок на майбутній час не знайдено</div>
+      )}
+
       {trips.map((trip) => {
         const available = toNumber(trip.seats_available ?? 0, 0);
         const total = toNumber(trip.seats_total ?? 0, 0);
@@ -176,17 +202,20 @@ export default function Trips() {
                 <div style={{ fontWeight: 800, fontSize: 18 }}>
                   {shortPlace(trip.origin)} → {shortPlace(trip.destination)}
                 </div>
+                <div style={{ marginTop: 6, fontSize: 13, fontWeight: 600, color: "#555" }}>
+                  🕒 Відправлення: {formatDate(trip.departure_time)}
+                </div>
                 <div style={{ marginTop: 8, fontSize: 14 }}>
-                  Ціна за місце: <span style={{ fontWeight: 700 }}>{price} грн</span>
+                  Ціна: <span style={{ fontWeight: 700 }}>{price} грн</span>
                 </div>
                 <div style={{ marginTop: 4, fontSize: 14, opacity: 0.8 }}>
-                  Вільних місць: <span style={{ fontWeight: 600 }}>{available} / {total}</span>
+                  Місця: <span style={{ fontWeight: 600 }}>{available} / {total}</span>
                 </div>
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                  <label style={{ fontSize: 12, marginBottom: 4, fontWeight: 700, color: "#000000" }}>Кількість місць:</label>
+                  <label style={{ fontSize: 12, marginBottom: 4, fontWeight: 700, color: "#000000" }}>Місць:</label>
                   <input
                     type="number"
                     min="1"
@@ -271,7 +300,6 @@ const styles = {
     minWidth: "140px",
     whiteSpace: "nowrap",
     textAlign: "center",
-    transition: "background 0.2s",
   },
   error: {
     marginBottom: 14,
@@ -293,7 +321,7 @@ const styles = {
     boxShadow: "0 2px 6px rgba(0,0,0,0.02)",
   },
   seatsInput: {
-    width: 70,
+    width: 60,
     padding: "8px",
     borderRadius: 10,
     border: "1px solid #d1d5da",
@@ -310,8 +338,6 @@ const styles = {
     color: "white",
     fontWeight: 700,
     fontSize: 15,
-    textAlign: "center",
-    transition: "all 0.2s ease",
   },
   toast: {
     position: "fixed",

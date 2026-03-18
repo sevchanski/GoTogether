@@ -43,12 +43,25 @@ def register(request):
 # ----------------------------------------
 # CURRENT USER (ME)
 # ----------------------------------------
-@api_view(["GET"])
+@api_view(["GET", "PATCH"])
 @permission_classes([IsAuthenticated])
 def me(request):
-    # Повертаємо дані залогіненого користувача
-    serializer = UserSerializer(request.user)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    if request.method == "GET":
+        serializer = UserSerializer(request.user, context={"request": request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    serializer = UserSerializer(
+        request.user,
+        data=request.data,
+        partial=True,
+        context={"request": request}
+    )
+
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 # ----------------------------------------

@@ -311,7 +311,7 @@ const styles = {
     fontWeight: 700,
   },
   complete: {
-    background: "#111",
+    background: "#3730a3",
     color: "white",
     border: "none",
     padding: "10px 14px",

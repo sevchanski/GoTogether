@@ -14,7 +14,6 @@ ALLOWED_HOSTS = []
 # APPLICATIONS
 # ===============================
 INSTALLED_APPS = [
-    # Django
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -22,13 +21,9 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django_filters',
-
-    # Third-party
     'corsheaders',
     'rest_framework',
-    'rest_framework.authtoken',
-
-    # Local
+    'rest_framework_simplejwt',
     'core',
 ]
 
@@ -36,7 +31,7 @@ INSTALLED_APPS = [
 # MIDDLEWARE
 # ===============================
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',  # 🔥 ВАЖЛИВО — першим
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -49,7 +44,7 @@ MIDDLEWARE = [
 # ===============================
 # CORS (React)
 # ===============================
-CORS_ALLOW_ALL_ORIGINS = True  # для розробки
+CORS_ALLOW_ALL_ORIGINS = True
 
 # ===============================
 # URLS / WSGI
@@ -58,7 +53,7 @@ ROOT_URLCONF = 'gotogether_project.urls'
 WSGI_APPLICATION = 'gotogether_project.wsgi.application'
 
 # ===============================
-# TEMPLATES
+# TEMPLATES (БЕЗ ЦЬОГО НЕ ПРАЦЮВАТИМЕ АДМІНКА)
 # ===============================
 TEMPLATES = [
     {
@@ -134,13 +129,13 @@ USE_I18N = True
 USE_TZ = True
 
 # ===============================
-# STATIC FILES
+# STATIC & MEDIA
 # ===============================
 STATIC_URL = '/static/'
+STATICFILES_DIRS = [BASE_DIR / 'core' / 'static']
 
-STATICFILES_DIRS = [
-    BASE_DIR / 'core' / 'static',
-]
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 # ===============================
 # DEFAULT PK
