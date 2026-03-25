@@ -2,11 +2,12 @@ from rest_framework import viewsets, permissions, status, filters
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework.permissions import IsAuthenticatedOrReadOnly, AllowAny, IsAuthenticated
+from rest_framework.permissions import IsAuthenticatedOrReadOnly, AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.db import transaction
+from django.db.models import Q
 
-from .models import Trip, Booking, Message, Review, Car
+from .models import Trip, Booking, Message, Review, Car, User
 from .serializers import (
     UserSerializer,
     TripSerializer,
@@ -16,6 +17,8 @@ from .serializers import (
     CarSerializer,
     RegisterSerializer,
     EmailTokenObtainPairSerializer,
+    AdminUserSerializer,
+    AdminReviewSerializer
 )
 from .filters import TripFilter
 
@@ -108,6 +111,38 @@ class TripViewSet(viewsets.ModelViewSet):
 
         return Response({"message": "Поїздку завершено"}, status=status.HTTP_200_OK)
 
+    def update(self, request, *args, **kwargs):
+        trip = self.get_object()
+
+        if trip.driver != request.user:
+            return Response(
+                {"detail": "Ви не можете редагувати чужу поїздку"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        trip = self.get_object()
+
+        if trip.driver != request.user:
+            return Response(
+                {"detail": "Ви не можете редагувати чужу поїздку"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        trip = self.get_object()
+
+        if trip.driver != request.user:
+            return Response(
+                {"detail": "Ви не можете видаляти чужу поїздку"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        return super().destroy(request, *args, **kwargs)
 
 # ----------------------------------------
 # BOOKING VIEWSET
@@ -120,14 +155,13 @@ class BookingViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
 
-        # пасажир бачить свої бронювання
-        passenger_bookings = Booking.objects.filter(passenger=user)
-
-        # водій бачить заявки на свої поїздки
-        driver_bookings = Booking.objects.filter(trip__driver=user)
-
-        return (passenger_bookings | driver_bookings).distinct()
-
+        return Booking.objects.filter(
+            Q(passenger=user) | Q(trip__driver=user)
+        ).select_related(
+            "passenger",
+            "trip",
+            "trip__driver"
+        ).distinct().order_by("-booked_at")
     def perform_create(self, serializer):
         serializer.save()
 
@@ -293,3 +327,146 @@ def cities(request):
     origins = Trip.objects.values_list("origin", flat=True).distinct()
     destinations = Trip.objects.values_list("destination", flat=True).distinct()
     return Response({"origins": list(origins), "destinations": list(destinations)}, status=status.HTTP_200_OK)
+
+@api_view(["GET"])
+@permission_classes([IsAdminUser])
+def admin_users(request):
+    users = User.objects.all().order_by("-date_joined")
+    serializer = UserSerializer(users, many=True)
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def block_user(request, user_id):
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response({"detail": "Користувача не знайдено"}, status=404)
+
+    user.is_blocked = True
+    user.save(update_fields=["is_blocked"])
+    return Response({"message": "Користувача заблоковано"})
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def unblock_user(request, user_id):
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response({"detail": "Користувача не знайдено"}, status=404)
+
+    user.is_blocked = False
+    user.save(update_fields=["is_blocked"])
+    return Response({"message": "Користувача розблоковано"})
+
+
+@api_view(["GET"])
+@permission_classes([IsAdminUser])
+def admin_reviews(request):
+    reviews = Review.objects.select_related("trip", "reviewer", "reviewee").all().order_by("-created_at")
+    serializer = ReviewSerializer(reviews, many=True)
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def hide_review(request, review_id):
+    try:
+        review = Review.objects.get(id=review_id)
+    except Review.DoesNotExist:
+        return Response({"detail": "Відгук не знайдено"}, status=404)
+
+    review.is_hidden = True
+    review.save(update_fields=["is_hidden"])
+    return Response({"message": "Відгук приховано"})
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def show_review(request, review_id):
+    try:
+        review = Review.objects.get(id=review_id)
+    except Review.DoesNotExist:
+        return Response({"detail": "Відгук не знайдено"}, status=404)
+
+    review.is_hidden = False
+    review.save(update_fields=["is_hidden"])
+    return Response({"message": "Відгук знову показується"})
+
+# ----------------------------------------
+# ADMIN: USERS
+# ----------------------------------------
+@api_view(["GET"])
+@permission_classes([IsAdminUser])
+def admin_users(request):
+    users = User.objects.all().order_by("-date_joined")
+    serializer = AdminUserSerializer(users, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def admin_block_user(request, user_id):
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response({"detail": "Користувача не знайдено"}, status=status.HTTP_404_NOT_FOUND)
+
+    if user.is_superuser:
+        return Response({"detail": "Не можна заблокувати суперкористувача"}, status=status.HTTP_400_BAD_REQUEST)
+
+    user.is_blocked = True
+    user.save(update_fields=["is_blocked"])
+    return Response({"message": "Користувача заблоковано"}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def admin_unblock_user(request, user_id):
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response({"detail": "Користувача не знайдено"}, status=status.HTTP_404_NOT_FOUND)
+
+    user.is_blocked = False
+    user.save(update_fields=["is_blocked"])
+    return Response({"message": "Користувача розблоковано"}, status=status.HTTP_200_OK)
+
+
+# ----------------------------------------
+# ADMIN: REVIEWS
+# ----------------------------------------
+@api_view(["GET"])
+@permission_classes([IsAdminUser])
+def admin_reviews(request):
+    reviews = Review.objects.select_related("trip", "reviewer", "reviewee").all().order_by("-created_at")
+    serializer = AdminReviewSerializer(reviews, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def admin_hide_review(request, review_id):
+    try:
+        review = Review.objects.get(id=review_id)
+    except Review.DoesNotExist:
+        return Response({"detail": "Відгук не знайдено"}, status=status.HTTP_404_NOT_FOUND)
+
+    review.is_hidden = True
+    review.save(update_fields=["is_hidden"])
+    return Response({"message": "Відгук приховано"}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def admin_show_review(request, review_id):
+    try:
+        review = Review.objects.get(id=review_id)
+    except Review.DoesNotExist:
+        return Response({"detail": "Відгук не знайдено"}, status=status.HTTP_404_NOT_FOUND)
+
+    review.is_hidden = False
+    review.save(update_fields=["is_hidden"])
+    return Response({"message": "Відгук знову відображається"}, status=status.HTTP_200_OK)

@@ -43,7 +43,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     rating = models.DecimalField(max_digits=3, decimal_places=2, default=Decimal("5.00"))
 
     is_driver = models.BooleanField(default=False)
-
+    is_blocked = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
     last_login = models.DateTimeField(blank=True, null=True)
 
@@ -210,6 +210,9 @@ class Review(models.Model):
     rating = models.PositiveSmallIntegerField(default=5)
     comment = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    is_blocked = models.BooleanField(default=False)
+    is_hidden = models.BooleanField(default=False)
+    is_approved = models.BooleanField(default=True)
 
     class Meta:
         unique_together = ("trip", "reviewer", "reviewee")

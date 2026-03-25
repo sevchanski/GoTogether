@@ -31,25 +31,23 @@ export default function Payouts() {
 
   const refreshAccess = async () => {
     if (!refresh) return null;
-
-    const res = await fetch(`${API}/api/token/refresh/`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ refresh }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return null;
-
-    localStorage.setItem("access", data.access);
-    return data.access;
+    try {
+      const res = await fetch(`${API}/api/token/refresh/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return null;
+      localStorage.setItem("access", data.access);
+      return data.access;
+    } catch {
+      return null;
+    }
   };
 
   const authFetch = async (url, options = {}) => {
     let token = localStorage.getItem("access");
-
     let res = await fetch(url, {
       ...options,
       headers: {
@@ -65,7 +63,6 @@ export default function Payouts() {
         navigate("/login");
         return null;
       }
-
       res = await fetch(url, {
         ...options,
         headers: {
@@ -74,19 +71,16 @@ export default function Payouts() {
         },
       });
     }
-
     return res;
   };
 
   const loadBookings = async () => {
     setLoading(true);
     setError("");
-
     const res = await authFetch(`${API}/api/bookings/`);
     if (!res) return;
 
     const data = await res.json().catch(() => ({}));
-
     if (!res.ok) {
       setError(typeof data === "string" ? data : JSON.stringify(data));
       setLoading(false);
@@ -104,7 +98,6 @@ export default function Payouts() {
 
   const driverPaidBookings = useMemo(() => {
     if (!currentUser?.id) return [];
-
     return bookings.filter((booking) => {
       const driverId = booking.trip_details?.driver?.id;
       return driverId === currentUser.id && booking.status === "approved";
@@ -113,7 +106,6 @@ export default function Payouts() {
 
   const groupedTrips = useMemo(() => {
     const map = new Map();
-
     for (const booking of driverPaidBookings) {
       const trip = booking.trip_details;
       if (!trip?.id) continue;
@@ -126,9 +118,7 @@ export default function Payouts() {
           totalRevenue: 0,
         });
       }
-
       const group = map.get(trip.id);
-
       group.bookings.push(booking);
       group.seatsSold += Number(booking.seats_booked || 0);
       group.totalRevenue += Number(booking.total_price || 0);
@@ -150,9 +140,7 @@ export default function Payouts() {
         {error && <div style={styles.error}>{error}</div>}
 
         {!loading && groupedTrips.length === 0 && (
-          <div style={styles.empty}>
-            Поки немає оплачених поїздок.
-          </div>
+          <div style={styles.empty}>Поки немає оплачених поїздок.</div>
         )}
 
         <div style={styles.list}>
@@ -176,10 +164,7 @@ export default function Payouts() {
                         {formatDateTime(trip.departure_time)}
                       </div>
                     </div>
-
-                    <div style={styles.badge}>
-                      {isOpen ? "▲" : "▼"}
-                    </div>
+                    <div style={styles.badge}>{isOpen ? "▲" : "▼"}</div>
                   </div>
 
                   <div style={styles.statsGrid}>
@@ -187,12 +172,10 @@ export default function Payouts() {
                       <span style={styles.statLabel}>Викуплено місць</span>
                       <b>{seatsSold}</b>
                     </div>
-
                     <div style={styles.statBox}>
                       <span style={styles.statLabel}>Виплата</span>
                       <b>{totalRevenue.toFixed(2)} грн</b>
                     </div>
-
                     <div style={styles.statBox}>
                       <span style={styles.statLabel}>Пасажирів</span>
                       <b>{bookings.length}</b>
@@ -203,24 +186,27 @@ export default function Payouts() {
                 {isOpen && (
                   <div style={styles.dropdown}>
                     <div style={styles.dropdownTitle}>Оплатили поїздку:</div>
+                    {bookings.map((booking) => {
+                      // Логіка формування імені пасажира
+                      const p = booking.passenger;
+                      const constructedName = `${p?.first_name || ""} ${p?.last_name || ""}`.trim();
+                      const displayName = p?.full_name || constructedName || p?.email || "Пасажир";
 
-                    {bookings.map((booking) => (
-                      <div key={booking.id} style={styles.passengerRow}>
-                        <div>
-                          <div style={styles.passengerName}>
-                            {booking.passenger?.full_name || "Пасажир"}
+                      return (
+                        <div key={booking.id} style={styles.passengerRow}>
+                          <div>
+                            <div style={styles.passengerName}>{displayName}</div>
+                            <div style={styles.passengerSub}>
+                              Рейтинг: {p?.rating ?? "—"} ⭐
+                            </div>
                           </div>
-                          <div style={styles.passengerSub}>
-                            Рейтинг: {booking.passenger?.rating ?? "—"} ⭐
+                          <div style={styles.passengerInfo}>
+                            <div>{booking.seats_booked} місц.</div>
+                            <div>{Number(booking.total_price || 0).toFixed(2)} грн</div>
                           </div>
                         </div>
-
-                        <div style={styles.passengerInfo}>
-                          <div>{booking.seats_booked} місц.</div>
-                          <div>{Number(booking.total_price || 0).toFixed(2)} грн</div>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -233,19 +219,9 @@ export default function Payouts() {
 }
 
 const styles = {
-  page: {
-    padding: 30,
-    background: "#f5f6f9",
-    minHeight: "100vh",
-  },
-  container: {
-    maxWidth: 980,
-    margin: "0 auto",
-  },
-  list: {
-    display: "grid",
-    gap: 14,
-  },
+  page: { padding: 30, background: "#f5f6f9", minHeight: "100vh" },
+  container: { maxWidth: 980, margin: "0 auto" },
+  list: { display: "grid", gap: 14 },
   card: {
     background: "white",
     borderRadius: 18,
@@ -268,15 +244,8 @@ const styles = {
     alignItems: "start",
     marginBottom: 14,
   },
-  route: {
-    fontWeight: 800,
-    fontSize: 17,
-  },
-  meta: {
-    marginTop: 6,
-    opacity: 0.75,
-    fontSize: 14,
-  },
+  route: { fontWeight: 800, fontSize: 17 },
+  meta: { marginTop: 6, opacity: 0.75, fontSize: 14 },
   badge: {
     minWidth: 34,
     height: 34,
@@ -287,11 +256,7 @@ const styles = {
     justifyContent: "center",
     fontWeight: 700,
   },
-  statsGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, 1fr)",
-    gap: 12,
-  },
+  statsGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 },
   statBox: {
     background: "#fafafa",
     border: "1px solid #eee",
@@ -300,10 +265,7 @@ const styles = {
     display: "grid",
     gap: 6,
   },
-  statLabel: {
-    fontSize: 12,
-    opacity: 0.7,
-  },
+  statLabel: { fontSize: 12, opacity: 0.7 },
   dropdown: {
     borderTop: "1px solid #eee",
     padding: 16,
@@ -311,10 +273,7 @@ const styles = {
     display: "grid",
     gap: 10,
   },
-  dropdownTitle: {
-    fontWeight: 800,
-    marginBottom: 4,
-  },
+  dropdownTitle: { fontWeight: 800, marginBottom: 4 },
   passengerRow: {
     display: "flex",
     justifyContent: "space-between",
@@ -325,14 +284,8 @@ const styles = {
     borderRadius: 12,
     padding: 12,
   },
-  passengerName: {
-    fontWeight: 700,
-  },
-  passengerSub: {
-    marginTop: 4,
-    fontSize: 13,
-    opacity: 0.75,
-  },
+  passengerName: { fontWeight: 700 },
+  passengerSub: { marginTop: 4, fontSize: 13, opacity: 0.75 },
   passengerInfo: {
     textAlign: "right",
     fontSize: 14,

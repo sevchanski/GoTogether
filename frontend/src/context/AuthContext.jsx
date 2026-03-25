@@ -25,21 +25,22 @@ export function AuthProvider({ children }) {
     setAccess(accessToken);
     setRefresh(refreshToken);
 
-    // отримуємо користувача
-    const res = await fetch(`${API}/api/me/`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
+    try {
+      const res = await fetch(`${API}/api/me/`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
 
-    if (!res.ok) {
-      throw new Error("Не вдалося отримати користувача");
+      if (!res.ok) throw new Error();
+
+      const me = await res.json();
+
+      localStorage.setItem("user", JSON.stringify(me));
+      setUser(me);
+    } catch {
+      logout();
     }
-
-    const me = await res.json();
-
-    localStorage.setItem("user", JSON.stringify(me));
-    setUser(me);
   };
 
   // -------------------------
@@ -56,7 +57,7 @@ export function AuthProvider({ children }) {
   };
 
   // -------------------------
-  // ПІДТЯГУЄМО USER ПІСЛЯ RELOAD
+  // ПІСЛЯ RELOAD
   // -------------------------
   useEffect(() => {
     if (!access) return;
@@ -77,7 +78,7 @@ export function AuthProvider({ children }) {
         })
         .catch(() => logout());
     }
-  }, []);
+  }, [access]);
 
   const value = useMemo(
     () => ({
@@ -87,6 +88,7 @@ export function AuthProvider({ children }) {
       isAuthenticated,
       login,
       logout,
+      setUser,
     }),
     [access, refresh, user]
   );

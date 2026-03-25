@@ -6,16 +6,16 @@ const API = "http://localhost:8000"; // для avatar
 
 export default function Navbar() {
   const { isAuthenticated, logout, user } = useContext(AuthContext);
+  console.log("USER  IN NAVBAR", user);
+  console.log("IS ADMIN:", user?.is_staff);
   const navigate = useNavigate();
   const location = useLocation();
 
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
 
-  // Закривати dropdown при переході на інший маршрут
   useEffect(() => setOpen(false), [location.pathname]);
 
-  // Закриття по кліку поза меню + ESC
   useEffect(() => {
     const onClick = (e) => {
       if (!wrapRef.current) return;
@@ -34,6 +34,7 @@ export default function Navbar() {
   }, []);
 
   const isDriver = !!user?.is_driver;
+  const isAdmin = !!user?.is_staff;
 
   const avatarSrc = useMemo(() => {
     if (!user?.avatar) return "";
@@ -77,19 +78,16 @@ export default function Navbar() {
       </Link>
 
       <div style={styles.right}>
-        {/* ✅ Для водія — кнопка "Створити поїздку" */}
         {isAuthenticated && isDriver && (
           <Link to="/createtrip" style={styles.primaryLink}>
             Створити поїздку
           </Link>
         )}
 
-        {/* ✅ Для всіх — "Пошук поїздок" */}
         <Link to="/trips" style={styles.link}>
           Пошук поїздок
         </Link>
 
-        {/* Avatar dropdown */}
         <div ref={wrapRef} style={styles.menuWrap}>
           <button
             type="button"
@@ -120,11 +118,17 @@ export default function Navbar() {
                   <div style={styles.dropdownHeader}>
                     <div style={styles.dropdownName}>{displayName}</div>
                     <div style={styles.dropdownSub}>
-                      {isDriver ? "Водій" : "Пасажир"}
+                      {isAdmin ? "Адміністратор" : isDriver ? "Водій" : "Пасажир"}
                     </div>
                   </div>
 
                   <div style={styles.hr} />
+
+                  {isAdmin && (
+                    <MenuItem onClick={() => go("/admin-dashboard")}>
+                      Адмін-панель
+                    </MenuItem>
+                  )}
 
                   {isDriver && (
                     <MenuItem onClick={() => go("/driver-dashboard")}>
@@ -177,7 +181,7 @@ const styles = {
     display: "flex",
     justifyContent: "space-between",
     padding: "14px 28px",
-    backgroundColor: "#0052cc", // Синій фон
+    backgroundColor: "#0052cc",
     color: "white",
     alignItems: "center",
     position: "sticky",
@@ -204,7 +208,7 @@ const styles = {
     opacity: 0.9,
   },
   primaryLink: {
-    color: "#0052cc", // Синій текст для білої кнопки
+    color: "#0052cc",
     background: "#fff",
     textDecoration: "none",
     fontSize: 14,
@@ -257,7 +261,7 @@ const styles = {
     right: 0,
     top: 46,
     width: 260,
-    background: "#0041a3", // Темніший синій для меню
+    background: "#0041a3",
     border: "1px solid rgba(255,255,255,0.15)",
     borderRadius: 12,
     overflow: "hidden",
@@ -293,7 +297,7 @@ const styles = {
     fontSize: 14,
   },
   itemDanger: {
-    color: "#ffabab", // Ніжно-червоний для синього фону
+    color: "#ffabab",
     fontWeight: 700,
   },
 };

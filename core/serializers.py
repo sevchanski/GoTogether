@@ -26,6 +26,7 @@ class UserSerializer(serializers.ModelSerializer):
             "avatar_url",
             "rating",
             "is_driver",
+            "is_staff",
             "trips_as_passenger",
             "trips_as_driver",
             "reviews_count",
@@ -39,6 +40,10 @@ class UserSerializer(serializers.ModelSerializer):
             "reviews_count",
             "avatar_url",
         ]
+
+    def get_full_name(self, obj):
+        name = f"{obj.first_name or ''} {obj.last_name or ''}".strip()
+        return name if name else obj.email
 
     def get_trips_as_passenger(self, obj):
         return Booking.objects.filter(
@@ -59,6 +64,7 @@ class UserSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.avatar.url)
             return obj.avatar.url
         return None
+
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -135,16 +141,18 @@ class TripSerializer(serializers.ModelSerializer):
 class BookingSerializer(serializers.ModelSerializer):
     passenger = UserSerializer(read_only=True)
 
-    # при створенні бронювання приймаємо trip як ID
+    # При створенні бронювання приймаємо trip як ID
     trip = serializers.PrimaryKeyRelatedField(
         queryset=Trip.objects.all(),
         write_only=True
     )
 
-    # для фронтенду / checkout віддаємо повну поїздку
+    # Для фронтенду віддаємо повну поїздку
     trip_details = TripSerializer(source="trip", read_only=True)
-
     total_price = serializers.SerializerMethodField(read_only=True)
+
+    # --- НОВЕ ПОЛЕ ---
+    is_reviewed = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Booking
@@ -157,8 +165,20 @@ class BookingSerializer(serializers.ModelSerializer):
             "status",
             "booked_at",
             "total_price",
+            "is_reviewed",  # Додали в список полів
         ]
-        read_only_fields = ["passenger", "status", "booked_at", "total_price"]
+        read_only_fields = ["passenger", "status", "booked_at", "total_price", "is_reviewed"]
+
+    def get_is_reviewed(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+
+        # Перевіряємо, чи залишав цей пасажир відгук до цієї поїздки
+        return Review.objects.filter(
+            trip=obj.trip,
+            reviewer=request.user
+        ).exists()
 
     def get_total_price(self, obj):
         try:
@@ -172,24 +192,16 @@ class BookingSerializer(serializers.ModelSerializer):
         seats = int(attrs.get("seats_booked", 1))
 
         if seats <= 0:
-            raise serializers.ValidationError({
-                "seats_booked": "Має бути > 0"
-            })
+            raise serializers.ValidationError({"seats_booked": "Має бути > 0"})
 
         if trip.driver_id == request.user.id:
-            raise serializers.ValidationError({
-                "trip": "Водій не може бронювати свою поїздку"
-            })
+            raise serializers.ValidationError({"trip": "Водій не може бронювати свою поїздку"})
 
         if trip.status in ("canceled", "completed"):
-            raise serializers.ValidationError({
-                "trip": "Поїздка недоступна"
-            })
+            raise serializers.ValidationError({"trip": "Поїздка недоступна"})
 
         if trip.seats_available < seats:
-            raise serializers.ValidationError({
-                "seats_booked": "Недостатньо місць"
-            })
+            raise serializers.ValidationError({"seats_booked": "Недостатньо місць"})
 
         return attrs
 
@@ -260,19 +272,27 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
             password=password
         )
 
+        # Перевірка на існування користувача та пароль
         if not user:
-            raise serializers.ValidationError("Невірна пошта або пароль")
+            raise serializers.ValidationError({"detail": "Невірна пошта або пароль"})
 
+        # Перевірка на блокування
+        if user.is_blocked:
+            raise serializers.ValidationError({"detail": "Ваш акаунт заблоковано"})
+
+        # Якщо все ок, генеруємо токени
         data = super().validate({
             self.username_field: email,
             "password": password
         })
 
+        # Додаємо дані користувача у відповідь
         data["user"] = {
             "id": user.id,
             "email": user.email,
             "full_name": f"{user.first_name} {user.last_name}",
             "is_driver": user.is_driver,
+            "is_staff": user.is_staff
         }
 
         return data
@@ -285,4 +305,50 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
 class MeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["id", "email", "first_name", "last_name", "is_driver"]
+        fields = ["id", "email", "first_name", "last_name", "is_driver","is_staff"]
+
+class AdminUserSerializer(serializers.ModelSerializer):
+    full_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "email",
+            "first_name",
+            "last_name",
+            "full_name",
+            "phone_number",
+            "rating",
+            "is_driver",
+            "is_staff",
+            "is_blocked",
+            "date_joined",
+        ]
+
+    def get_full_name(self, obj):
+        name = f"{obj.first_name or ''} {obj.last_name or ''}".strip()
+        return name if name else obj.email
+
+
+class AdminReviewSerializer(serializers.ModelSerializer):
+    reviewer = UserSerializer(read_only=True)
+    reviewee = UserSerializer(read_only=True)
+    trip_route = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Review
+        fields = [
+            "id",
+            "trip",
+            "trip_route",
+            "reviewer",
+            "reviewee",
+            "rating",
+            "comment",
+            "created_at",
+            "is_hidden",
+        ]
+
+    def get_trip_route(self, obj):
+        return f"{obj.trip.origin} → {obj.trip.destination}"

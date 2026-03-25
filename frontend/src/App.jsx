@@ -16,6 +16,8 @@ import MyTrips from "./pages/MyTrips";
 import LeaveReview from "./pages/LeaveReview";
 import Payouts from "./pages/Payouts";
 import Payments from "./pages/Payments";
+import EditTrip from "./pages/EditTrip";
+import AdminDashboard from "./pages/AdminDashboard"
 
 function App() {
   return (
@@ -47,7 +49,22 @@ function App() {
               </PrivateRoute>
             }
           />
-
+          <Route
+            path="/edit-trip/:tripId"
+            element={
+              <PrivateRoute>
+                <EditTrip />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/admin-dashboard"
+            element={
+              <PrivateRoute>
+                <AdminDashboard />
+              </PrivateRoute>
+            }
+          />
           <Route
              path="/leave-review"
              element={
